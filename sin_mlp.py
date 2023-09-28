@@ -6,7 +6,7 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
 
-class FixedDropout(nn.Module):
+class FixedWeightDrop(nn.Module):
     def __init__(self, layer, seed: int = 0) -> None:
         super().__init__()
         self.seed = seed
@@ -18,25 +18,38 @@ class FixedDropout(nn.Module):
         return torch.bernoulli(torch.ones(self.weight_shape) * (1 - p())),\
                torch.bernoulli(torch.ones(self.bias_shape) * (1 - p()))
 
-class MyMLP(nn.Module):
-    def __init__(self, set_bandwidth=False, hidden_units=256):
+class FixedDropout(nn.Module):
+    def __init__(self, seed: int = 0) -> None:
         super().__init__()
-        self.set_bandwidth = set_bandwidth
+        self.seed = seed
+
+    def forward(self, x, p):
+        torch.manual_seed(self.seed)
+        return F.dropout(x, p(), True)
+
+
+class MyMLP(nn.Module):
+    def __init__(self, bandwidth_mode=None, hidden_units=256):
+        super().__init__()
+        self.weight_drop = bandwidth_mode == "wd"
+        self.dropout = bandwidth_mode == "d"
         l1 = nn.Linear(1, hidden_units)
         l2 = nn.Linear(hidden_units, hidden_units)
         self.net = nn.Sequential(
-            FixedDropout(l1) if set_bandwidth else nn.Identity(),
+            FixedWeightDrop(l1) if self.weight_drop else nn.Identity(),
             l1,
+            FixedDropout() if self.dropout else nn.Identity(),
             nn.ReLU(),
-            FixedDropout(l2) if set_bandwidth else nn.Identity(),
+            FixedWeightDrop(l2) if self.weight_drop else nn.Identity(),
             l2,
+            FixedDropout() if self.dropout else nn.Identity(),
             nn.ReLU(),
             nn.Linear(hidden_units, 1),
         )
 
     def forward(self, x, bandwidth, test=False):
         for i, layer in enumerate(self.net[:-1]):
-            if self.set_bandwidth and isinstance(layer, FixedDropout):
+            if self.weight_drop and isinstance(layer, FixedWeightDrop):
                 with torch.no_grad():
                     dropout_w, dropout_b = self.net[i](bandwidth)
                     old_w = self.net[i + 1].weight.data.detach().clone()
@@ -47,8 +60,10 @@ class MyMLP(nn.Module):
                 with torch.no_grad():
                     self.net[i + 1].weight.data += torch.logical_not(dropout_w) * old_w
                     self.net[i + 1].bias.data += torch.logical_not(dropout_b) * old_b
-            elif self.set_bandwidth and isinstance(layer, nn.Linear):
+            elif self.weight_drop and isinstance(layer, nn.Linear):
                 continue
+            elif self.dropout and isinstance(layer, FixedDropout):
+                x = layer(x, bandwidth)
             else:
                 x = layer(x)
         return self.net[-1](x)
@@ -71,6 +86,10 @@ eq_values = np.sin(eq_samples)
 tensor_eq_samples = torch.from_numpy(eq_samples).float().view(eq_samples.shape[0], 1)
 tensor_eq_values = torch.from_numpy(eq_values).float()
 
+bandwidth_mode = ""
+if "-bm" in sys.argv:
+    bandwidth_mode = sys.argv[sys.argv.index("-bm") + 1]
+
 if "-lm" not in sys.argv:
     TRAINIG_STEPS = 80000
     BATCH_SIZE = 128
@@ -86,6 +105,7 @@ if "-lm" not in sys.argv:
         assert str_units.isnumeric()
         units = int(str_units)
 
+
     mode = "default"
     if "-sl" in sys.argv:
         BANDWIDTH_SCHEDULER = lambda: max(0.9 - (step / TRAINIG_STEPS + 0.05), 0)
@@ -99,11 +119,12 @@ if "-lm" not in sys.argv:
         # visualize_normal(np.clip(np.random.normal(0.45, 0.2, 10000), 0.0, 0.9))
     else:
         BANDWIDTH_SCHEDULER = lambda: max(0.9 - (step / TRAINIG_STEPS + 0.05), 0)
+    mode += "_" + bandwidth_mode
 
-    path = mode + "_" + str(units) + ".pth"
+    path = "models/" + mode + "_" + str(units) + ".pth"
     sin_values = np.sin(samples)
 
-    net = MyMLP(set_bandwidth=bandwidth, hidden_units=units)
+    net = MyMLP(bandwidth_mode=bandwidth_mode, hidden_units=units)
     net.train()
     opt = torch.optim.Adam(net.parameters(), lr=LR)
     criterion_loss = torch.nn.MSELoss()
@@ -131,20 +152,23 @@ if "-lm" not in sys.argv:
             min_loss_idx = i
             torch.save(net.state_dict(), path)
 
-    torch.save(net.state_dict(), "last_" + path)
+    split_idx = path.index("/")
+    torch.save(net.state_dict(), path[:split_idx + 1] + "last_" + path[split_idx + 1:])
     plt.plot(np.arange(0, len(losses)), losses)
     print("Min loss at idx: ", min_loss_idx, ", value of: ", min_loss.item())
     plt.title("Mode " + mode + str(units) + "_loss")
-    plt.savefig(mode + "_" + str(units) + "_loss.png")
+    plt.savefig("plots/" + mode + "_" + str(units) + "_loss.png")
     plt.close()
     # plt.show()
 else:
     path = sys.argv[sys.argv.index('-lm') + 1]
 
+if bandwidth_mode == "":
+    bandwidth_mode = "d"
 
-mode = path.split("_")[0]
-units = path.split("_")[1].split(".")[0]
-net = MyMLP(set_bandwidth=True, hidden_units=int(units))
+mode = "_".join(path[path.index("/") + 1:].split("_")[:2])
+units = path.split("_")[2].split(".")[0]
+net = MyMLP(bandwidth_mode=bandwidth_mode, hidden_units=int(units))
 net.load_state_dict(torch.load(path))
 
 with torch.no_grad():
@@ -153,6 +177,6 @@ with torch.no_grad():
         plt.plot(eq_samples, predictions.detach().numpy(), color="blue", alpha=0.5)
         plt.plot(eq_samples, np.sin(eq_samples), color="red", alpha=0.5)
         plt.title("Mode " + mode + str(units) + ", dorpout prob " + str(prob))
-        plt.savefig(mode + "_" + str(units) + "_" + str(prob) + ".png")
+        plt.savefig("plots/" + mode + "_" + str(units) + "_" + str(prob) + ".png")
         plt.close()
         # plt.show()
