@@ -6,17 +6,28 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
 
-class FixedWeightDrop(nn.Module):
-    def __init__(self, layer, seed: int = 0) -> None:
-        super().__init__()
+class WeightDropLinear(nn.Linear):
+    def __init__(self, in_f, out_f, bias = True, device=None, dtype=None, seed=0):
+        super().__init__(in_f, out_f, bias, device, dtype)
         self.seed = seed
-        self.weight_shape = layer.weight.data.shape
-        self.bias_shape = layer.bias.data.shape
+        self.weight_shape = self.weight.data.shape
+        self.bias_shape = self.bias.data.shape
 
-    def forward(self, p):
+    def forward(self, x, p):
         torch.manual_seed(self.seed)
-        return torch.bernoulli(torch.ones(self.weight_shape) * (1 - p())),\
-               torch.bernoulli(torch.ones(self.bias_shape) * (1 - p()))
+        old_weight = self.weight.data.detach().clone()
+        old_bias = self.bias.data.detach().clone()
+        with torch.no_grad():
+            drop_weight = torch.bernoulli(torch.full(self.weight_shape, 1 - p()))
+            drop_bias = torch.bernoulli(torch.full(self.bias_shape, 1 - p()))
+        self.weight.data *= drop_weight
+        self.bias.data *= drop_bias
+        prediction = super().forward(x)
+        with torch.no_grad():
+            self.weight.data += torch.logical_not(drop_weight) * old_weight
+            self.bias.data += torch.logical_not(drop_bias) * old_bias
+        return prediction
+
 
 class FixedDropout(nn.Module):
     def __init__(self, seed: int = 0) -> None:
@@ -29,37 +40,28 @@ class FixedDropout(nn.Module):
 
 
 class MyMLP(nn.Module):
-    def __init__(self, bandwidth_mode=None, hidden_units=256):
+    def __init__(self, bandwidth_mode=None, hidden_units=256, bandwidth=0.5):
         super().__init__()
         self.weight_drop = bandwidth_mode == "wd"
         self.dropout = bandwidth_mode == "d"
         l1 = nn.Linear(1, hidden_units)
         l2 = nn.Linear(hidden_units, hidden_units)
         self.net = nn.Sequential(
-            FixedWeightDrop(l1) if self.weight_drop else nn.Identity(),
-            l1,
-            FixedDropout() if self.dropout else nn.Identity(),
+            WeightDropLinear(1, hidden_units) if self.weight_drop\
+                else nn.Linear(1, hidden_units),
+            nn.Dropout(bandwidth) if self.dropout else nn.Identity(),
             nn.ReLU(),
-            FixedWeightDrop(l2) if self.weight_drop else nn.Identity(),
-            l2,
-            FixedDropout() if self.dropout else nn.Identity(),
+            WeightDropLinear(hidden_units, hidden_units) if self.weight_drop\
+                else nn.Linear(hidden_units, hidden_units),
+            nn.Dropout(bandwidth) if self.dropout else nn.Identity(),
             nn.ReLU(),
             nn.Linear(hidden_units, 1),
         )
 
     def forward(self, x, bandwidth, test=False):
         for i, layer in enumerate(self.net[:-1]):
-            if self.weight_drop and isinstance(layer, FixedWeightDrop):
-                with torch.no_grad():
-                    dropout_w, dropout_b = self.net[i](bandwidth)
-                    old_w = self.net[i + 1].weight.data.detach().clone()
-                    old_b = self.net[i + 1].bias.data.detach().clone()
-                    self.net[i + 1].weight.data *= dropout_w
-                    self.net[i + 1].bias.data *= dropout_b
-                x = self.net[i + 1](x)
-                with torch.no_grad():
-                    self.net[i + 1].weight.data += torch.logical_not(dropout_w) * old_w
-                    self.net[i + 1].bias.data += torch.logical_not(dropout_b) * old_b
+            if self.weight_drop and isinstance(layer, WeightDropLinear):
+                x = layer(x, bandwidth)
             elif self.weight_drop and isinstance(layer, nn.Linear):
                 continue
             elif self.dropout and isinstance(layer, FixedDropout):
