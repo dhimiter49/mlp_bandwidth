@@ -6,6 +6,19 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
 
+HELP_MESSAGE="""\
+Usage: python sin_mlp.py [options]
+    -h\t\t(bool) optional, show this help message
+    -r\t\t(bool) optional, train with random uniform sampled data
+    -sl\t\t(bool) optional, train with bandwidth scheduling sampled linearly
+    -su\t\t(bool) optional, train with bandwidth scheduling sampled uniformly
+    -sn\t\t(bool) optional, train with bandwidth scheduling sampled with clipped normal distribution
+    -u\t\t(int) optional, number of hidden units of a single hidden layer MLP
+    -lm\t\t(string) optional, load a model from given path and test it
+    -bm\t\t(enum) optional, bandwidth mode: either dropout (d) or weight dropout (wd)
+"""
+
+
 class WeightDropLinear(nn.Linear):
     def __init__(self, in_f, out_f, bias=True, device=None, dtype=None, seed=0):
         super().__init__(in_f, out_f, bias, device, dtype)
@@ -82,6 +95,11 @@ def visualize_normal(samples, splits=9):
         n_samples = split_samples.sum()
         plt.bar(min_val + split * dsplit + dsplit / 2, n_samples, dsplit)
     plt.show()
+
+
+if "-h" in sys.argv:
+    print(HELP_MESSAGE[:-1])
+    exit()
 
 
 random_samples = np.random.uniform(0, 2 * np.pi, int(40 * np.pi))
