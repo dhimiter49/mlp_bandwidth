@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 
 class WeightDropLinear(nn.Linear):
-    def __init__(self, in_f, out_f, bias = True, device=None, dtype=None, seed=0):
+    def __init__(self, in_f, out_f, bias=True, device=None, dtype=None, seed=0):
         super().__init__(in_f, out_f, bias, device, dtype)
         self.seed = seed
         self.weight_shape = self.weight.data.shape
@@ -44,15 +44,15 @@ class MyMLP(nn.Module):
         super().__init__()
         self.weight_drop = bandwidth_mode == "wd"
         self.dropout = bandwidth_mode == "d"
-        l1 = nn.Linear(1, hidden_units)
-        l2 = nn.Linear(hidden_units, hidden_units)
         self.net = nn.Sequential(
-            WeightDropLinear(1, hidden_units) if self.weight_drop\
-                else nn.Linear(1, hidden_units),
+            WeightDropLinear(1, hidden_units)
+            if self.weight_drop
+            else nn.Linear(1, hidden_units),
             nn.Dropout(bandwidth) if self.dropout else nn.Identity(),
             nn.ReLU(),
-            WeightDropLinear(hidden_units, hidden_units) if self.weight_drop\
-                else nn.Linear(hidden_units, hidden_units),
+            WeightDropLinear(hidden_units, hidden_units)
+            if self.weight_drop
+            else nn.Linear(hidden_units, hidden_units),
             nn.Dropout(bandwidth) if self.dropout else nn.Identity(),
             nn.ReLU(),
             nn.Linear(hidden_units, 1),
@@ -76,7 +76,9 @@ def visualize_normal(samples, splits=9):
     max_val = samples.max()
     dsplit = (max_val - min_val) / splits
     for split in range(splits):
-        split_samples = ((min_val + dsplit * split) <= samples) * ((min_val + dsplit * (split + 1)) >= samples)
+        split_samples = ((min_val + dsplit * split) <= samples) * (
+            (min_val + dsplit * (split + 1)) >= samples
+        )
         n_samples = split_samples.sum()
         plt.bar(min_val + split * dsplit + dsplit / 2, n_samples, dsplit)
     plt.show()
@@ -106,7 +108,6 @@ if "-lm" not in sys.argv:
         str_units = sys.argv[sys.argv.index("-u") + 1]
         assert str_units.isnumeric()
         units = int(str_units)
-
 
     mode = "default"
     if "-sl" in sys.argv:
@@ -155,7 +156,9 @@ if "-lm" not in sys.argv:
             torch.save(net.state_dict(), path)
 
     split_idx = path.index("/")
-    torch.save(net.state_dict(), path[:split_idx + 1] + "last_" + path[split_idx + 1:])
+    torch.save(
+        net.state_dict(), path[: split_idx + 1] + "last_" + path[split_idx + 1 :]
+    )
     plt.plot(np.arange(0, len(losses)), losses)
     print("Min loss at idx: ", min_loss_idx, ", value of: ", min_loss.item())
     plt.title("Mode " + mode + str(units) + "_loss")
@@ -163,12 +166,12 @@ if "-lm" not in sys.argv:
     plt.close()
     # plt.show()
 else:
-    path = sys.argv[sys.argv.index('-lm') + 1]
+    path = sys.argv[sys.argv.index("-lm") + 1]
 
 if bandwidth_mode == "":
     bandwidth_mode = "d"
 
-mode = "_".join(path[path.index("/") + 1:].split("_")[:2])
+mode = "_".join(path[path.index("/") + 1 :].split("_")[:2])
 units = path.split("_")[2].split(".")[0]
 net = MyMLP(bandwidth_mode=bandwidth_mode, hidden_units=int(units))
 net.load_state_dict(torch.load(path))
