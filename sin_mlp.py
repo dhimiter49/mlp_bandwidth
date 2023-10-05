@@ -15,6 +15,7 @@ Usage: python sin_mlp.py [options]
     -sn\t\t(bool) optional, train with bandwidth scheduling sampled with clipped normal distribution
     -u\t\t(int) optional, number of hidden units of a single hidden layer MLP
     -lm\t\t(string) optional, load a model from given path and test it
+    -lv\t\t(bool) optional, show plots live
     -bm\t\t(enum) optional, bandwidth mode: either dropout (d) or weight dropout (wd)
 """
 
@@ -101,6 +102,7 @@ if "-h" in sys.argv:
     print(HELP_MESSAGE[:-1])
     exit()
 
+live = "-lv" in sys.argv
 
 random_samples = np.random.uniform(0, 2 * np.pi, int(40 * np.pi))
 eq_samples = np.arange(0, 2 * np.pi, 0.01)  # equidistant samples
@@ -180,9 +182,11 @@ if "-lm" not in sys.argv:
     plt.plot(np.arange(0, len(losses)), losses)
     print("Min loss at idx: ", min_loss_idx, ", value of: ", min_loss.item())
     plt.title("Mode " + mode + str(units) + "_loss")
-    plt.savefig("plots/" + mode + "_" + str(units) + "_loss.png")
-    plt.close()
-    # plt.show()
+    if not live:
+        plt.savefig("plots/" + mode + "_" + str(units) + "_loss.png")
+        plt.close()
+    else:
+        plt.show()
 else:
     path = sys.argv[sys.argv.index("-lm") + 1]
 
@@ -191,15 +195,19 @@ if bandwidth_mode == "":
 
 mode = "_".join(path[path.index("/") + 1 :].split("_")[:2])
 units = path.split("_")[2].split(".")[0]
-net = MyMLP(bandwidth_mode=bandwidth_mode, hidden_units=int(units))
-net.load_state_dict(torch.load(path))
 
 with torch.no_grad():
     for prob in [0.9, 0.7, 0.5, 0.3, 0.0]:
+        net = MyMLP(
+            bandwidth_mode=bandwidth_mode, hidden_units=int(units), bandwidth=prob
+        )
+        net.load_state_dict(torch.load(path))
         predictions = net(tensor_eq_samples, lambda: prob)
         plt.plot(eq_samples, predictions.detach().numpy(), color="blue", alpha=0.5)
         plt.plot(eq_samples, np.sin(eq_samples), color="red", alpha=0.5)
         plt.title("Mode " + mode + str(units) + ", dorpout prob " + str(prob))
-        plt.savefig("plots/" + mode + "_" + str(units) + "_" + str(prob) + ".png")
-        plt.close()
-        # plt.show()
+        if not live:
+            plt.savefig("plots/" + mode + "_" + str(units) + "_" + str(prob) + ".png")
+            plt.close()
+        else:
+            plt.show()
