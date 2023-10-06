@@ -32,8 +32,8 @@ class WeightDropLinear(nn.Linear):
         old_weight = self.weight.data.detach().clone()
         old_bias = self.bias.data.detach().clone()
         with torch.no_grad():
-            drop_weight = torch.bernoulli(torch.full(self.weight_shape, 1 - p()))
-            drop_bias = torch.bernoulli(torch.full(self.bias_shape, 1 - p()))
+            drop_weight = torch.bernoulli(torch.full(self.weight_shape, float(1 - p())))
+            drop_bias = torch.bernoulli(torch.full(self.bias_shape, float(1 - p())))
         self.weight.data *= drop_weight
         self.bias.data *= drop_bias
         prediction = super().forward(x)
