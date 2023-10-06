@@ -17,6 +17,9 @@ Usage: python sin_mlp.py [options]
     -lm\t\t(string) optional, load a model from given path (inside models directory) and test it
     -lv\t\t(bool) optional, show plots live
     -bm\t\t(enum) optional, bandwidth mode: either dropout (d) or weight dropout (wd)
+    -ts\t\t(int) optional, training steps
+    -bs\t\t(int) optional, batch size
+    -lr\t\t(float) optional, learning rate
 """
 
 
@@ -118,6 +121,12 @@ if "-lm" not in sys.argv:
     TRAINIG_STEPS = 80000
     BATCH_SIZE = 128
     LR = 0.000005
+    if "-ts" in sys.argv:
+        TRAINIG_STEPS = int(sys.argv[sys.argv.index("-ts") + 1])
+    if "-bs" in sys.argv:
+        BATCH_SIZE = int(sys.argv[sys.argv.index("-bs") + 1])
+    if "-lr" in sys.argv:
+        LR = float(sys.argv[sys.argv.index("-lr") + 1])
     step = 0
 
     samples = random_samples if "-r" in sys.argv else eq_samples
