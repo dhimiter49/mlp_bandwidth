@@ -193,7 +193,10 @@ else:
 if bandwidth_mode == "":
     bandwidth_mode = "d"
 
-mode = "_".join(path[path.index("/") + 1 :].split("_")[:2])
+if path[path.index("/") + 1 :].split("_")[0] == "default":
+    mode = "default_" + bandwidth_mode
+else:
+    mode = "_".join(path[path.index("/") + 1 :].split("_")[:2])
 units = path.split("_")[2].split(".")[0]
 
 with torch.no_grad():
