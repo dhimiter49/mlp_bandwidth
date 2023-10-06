@@ -6,7 +6,7 @@ from torch.nn import functional as F
 import matplotlib.pyplot as plt
 
 
-HELP_MESSAGE="""\
+HELP_MESSAGE = """\
 Usage: python sin_mlp.py [options]
     -h\t\t(bool) optional, show this help message
     -r\t\t(bool) optional, train with random uniform sampled data
@@ -14,7 +14,7 @@ Usage: python sin_mlp.py [options]
     -su\t\t(bool) optional, train with bandwidth scheduling sampled uniformly
     -sn\t\t(bool) optional, train with bandwidth scheduling sampled with clipped normal distribution
     -u\t\t(int) optional, number of hidden units of a single hidden layer MLP
-    -lm\t\t(string) optional, load a model from given path and test it
+    -lm\t\t(string) optional, load a model from given path (inside models directory) and test it
     -lv\t\t(bool) optional, show plots live
     -bm\t\t(enum) optional, bandwidth mode: either dropout (d) or weight dropout (wd)
 """
@@ -193,10 +193,15 @@ else:
 if bandwidth_mode == "":
     bandwidth_mode = "d"
 
+last = ""
+if path[path.index("/") + 1 :].split("_")[0] == "last":
+    last = "last_"
+    path = path.replace("last_", "")
+
 if path[path.index("/") + 1 :].split("_")[0] == "default":
-    mode = "default_" + bandwidth_mode
+    mode = last + "default_" + bandwidth_mode
 else:
-    mode = "_".join(path[path.index("/") + 1 :].split("_")[:2])
+    mode = last + "_".join(path[path.index("/") + 1 :].split("_")[:2])
 units = path.split("_")[2].split(".")[0]
 
 with torch.no_grad():
